@@ -1,0 +1,55 @@
+name: Push
+
+on:
+  schedule:
+    # runs at UTC+8 00:00
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [boi-public-data-update]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: 'recursive'
+        fetch-depth: 0
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Install necessary Python packages
+      run: |
+        pip install -r requirements.txt
+    - name: Update submodules
+      run: |
+        git submodule update --remote
+
+    # Custom script
+    - name: Run main.py
+      run: python main.py
+
+    # Push changes
+    - name: Push changes
+      run: |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        git add .
+        git commit -m "Update: push SHA ${{ github.sha }}"
+        git config -l | grep 'http\..*\.extraheader' | cut -d= -f1 | xargs -L1 git config --unset-all
+        git push https://github-actions[bot]:$REPO_KEY@github.com/BA-OST-Index/public_data.git HEAD:main
+      env:
+        REPO_KEY: ${{secrets.ACTION_SCRIPT}}
+
+    # Invalidate CloudFront
+    - name: Invalidate CloudFront
+      uses: chetan/invalidate-cloudfront-action@v2
+      env:
+        DISTRIBUTION: ${{ secrets.AWS_STATIC_DISTRIBUTION }}
+        PATHS: "/*"
+        AWS_REGION: "us-east-1"
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
